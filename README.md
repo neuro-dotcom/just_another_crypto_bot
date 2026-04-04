@@ -33,19 +33,19 @@ This bot provides a seamless bridge between raw market data and actionable human
    git clone [https://github.com/neuro-dotcom/just_another_crypto_bot.git](https://github.com/neuro-dotcom/just_another_crypto_bot.git)
    cd just_another_crypto_bot
 
-   Install dependencies:
-
+2. **Install dependencies:**
    ```bash
    pip install -r requirements.txt
 
-   Configure Environment Variables:
+3. **Configure Environment Variables:**
+
    Create a .env file in the root directory:
    ```bash
    GOOGLE_API_KEY=your_gemini_key
    TELEGRAM_BOT_TOKEN=your_bot_token
    TELEGRAM_CHAT_ID=your_chat_id
 
-   Run the bot:   
+4. **Run the bot:**   
    ```bash
    python main.py
 
