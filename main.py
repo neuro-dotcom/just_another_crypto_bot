@@ -5,6 +5,10 @@ from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton
 from google import genai
 from dotenv import load_dotenv
 
+# NEW: Built-in libraries for our dummy web server
+import threading
+from http.server import BaseHTTPRequestHandler, HTTPServer
+
 # --- 1. Configuration ---
 load_dotenv()
 API_KEY = os.getenv("GOOGLE_API_KEY")
@@ -13,7 +17,7 @@ TELEGRAM_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 client = genai.Client(api_key=API_KEY)
 bot = telebot.TeleBot(TELEGRAM_TOKEN)
 
-# --- 2. Data Gathering Modules (Unchanged) ---
+# --- 2. Data Gathering Modules ---
 def fetch_crypto_prices():
     url = "https://api.coingecko.com/api/v3/simple/price?ids=bitcoin,ethereum&vs_currencies=usd"
     try:
@@ -38,9 +42,6 @@ def fetch_fear_and_greed_index():
 
 # --- 3. AI Processing Module ---
 def generate_ai_analysis(btc, eth, fng_val, fng_sent, mode):
-    """Generates analysis based on the user's selected mode."""
-    
-    # We change the prompt based on what button they clicked
     if mode == "bilingual":
         format_instructions = "Provide the response in two formats: 🇬🇧 English first, then 🇷🇺 Russian."
     elif mode == "english":
@@ -68,11 +69,8 @@ def generate_ai_analysis(btc, eth, fng_val, fng_sent, mode):
         return f"❌ AI Error: {e}"
 
 # --- 4. Telegram Bot Handlers ---
-
-# This runs when the user types /start
 @bot.message_handler(commands=['start'])
 def send_welcome(message):
-    # Create the keyboard (buttons)
     markup = InlineKeyboardMarkup()
     markup.row_width = 1
     markup.add(
@@ -80,14 +78,11 @@ def send_welcome(message):
         InlineKeyboardButton("🇺🇸 AI Report (English)", callback_data="ai_english"),
         InlineKeyboardButton("🌍 AI Report (Bilingual)", callback_data="ai_bilingual")
     )
-    
     welcome_text = "Welcome to Just Another Crypto AI 🐺\nChoose your report format:"
     bot.send_message(message.chat.id, welcome_text, reply_markup=markup)
 
-# This runs when the user clicks a button
 @bot.callback_query_handler(func=lambda call: True)
 def handle_query(call):
-    # Inform Telegram we received the click (stops the loading animation on the button)
     bot.answer_callback_query(call.id, "Gathering data...")
     bot.send_message(call.message.chat.id, "📡 Fetching market data. Please wait...")
 
@@ -98,7 +93,6 @@ def handle_query(call):
         bot.send_message(call.message.chat.id, "⚠️ API Error: Missing data.")
         return
 
-    # Check which button was pressed
     if call.data == "raw_data":
         report = f"💰 **Raw Market Data:**\nBTC: ${btc}\nETH: ${eth}\nFear & Greed: {fng_val}/100 ({fng_sent})"
         bot.send_message(call.message.chat.id, report, parse_mode="Markdown")
@@ -111,8 +105,29 @@ def handle_query(call):
         report = generate_ai_analysis(btc, eth, fng_val, fng_sent, mode="bilingual")
         bot.send_message(call.message.chat.id, report)
 
-# --- 5. Main Execution Flow ---
+# --- 5. Dummy Web Server (The Render Fix) ---
+class DummyHandler(BaseHTTPRequestHandler):
+    def do_GET(self):
+        self.send_response(200)
+        self.send_header('Content-type', 'text/plain')
+        self.end_headers()
+        self.wfile.write(b"Bot is alive and running!")
+        
+    def log_message(self, format, *args):
+        pass # Suppress standard HTTP server logs to keep terminal clean
+
+def start_dummy_server():
+    port = int(os.environ.get("PORT", 10000))
+    server = HTTPServer(('0.0.0.0', port), DummyHandler)
+    print(f"🌐 Dummy web server running on port {port}")
+    server.serve_forever()
+
+# --- 6. Main Execution Flow ---
 if __name__ == "__main__":
+    print("🚀 Starting background processes...")
+    
+    # Start the dummy web server in a parallel thread so it doesn't block the bot
+    threading.Thread(target=start_dummy_server, daemon=True).start()
+
     print("🤖 Bot is starting... Listening for Telegram messages.")
-    # This keeps the script running 24/7 waiting for button clicks
     bot.infinity_polling()
