@@ -1,0 +1,4 @@
+requests
+pyTelegramBotAPI
+google-genai
+python-dotenv
