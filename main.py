@@ -111,15 +111,27 @@ def generate_ai_analysis(btc, eth, fng_val, fng_sent, mode):
 # --- 4. Telegram Bot Handlers ---
 @bot.message_handler(commands=['start'])
 def send_welcome(message):
-    markup = InlineKeyboardMarkup()
-    markup.row_width = 1
-    markup.add(
-        InlineKeyboardButton("📊 Dry Numbers Only", callback_data="raw_data"),
-        InlineKeyboardButton("🇺🇸 AI Report (English)", callback_data="ai_english"),
-        InlineKeyboardButton("🌍 AI Report (Bilingual)", callback_data="ai_bilingual")
-    )
-    welcome_text = "Welcome to Just Another Crypto AI 🐺\nChoose your report format:"
-    bot.send_message(message.chat.id, welcome_text, reply_markup=markup)
+    # THE ADMIN PATH (For You)
+    if str(message.chat.id) == str(AUTHORIZED_USER_ID):
+        markup = InlineKeyboardMarkup()
+        markup.row_width = 1
+        markup.add(
+            InlineKeyboardButton("📊 Dry Numbers Only", callback_data="raw_data"),
+            InlineKeyboardButton("🇺🇸 AI Report (English)", callback_data="ai_english"),
+            InlineKeyboardButton("🌍 AI Report (Bilingual)", callback_data="ai_bilingual")
+        )
+        welcome_text = "Welcome to Just Another Crypto AI, boss 🐺\nChoose your report format:"
+        bot.send_message(message.chat.id, welcome_text, reply_markup=markup)
+        
+    # THE GUEST PATH (For HR and Recruiters)
+    else:
+        guest_text = (
+            "👋 **Hello! I am the Just Another Crypto AI.**\n\n"
+            "I was built by neuro-dotcom as an autonomous AI Ops portfolio project. \n\n"
+            "🔒 **Security Lock Active:** To prevent API credit exhaustion, my core LLM generation features are restricted to Admin access only via Role-Based Access Control (RBAC).\n\n"
+            "However, my cloud infrastructure is fully operational! You can review my source code, Docker configuration, and CI/CD pipeline on GitHub."
+        )
+        bot.send_message(message.chat.id, guest_text, parse_mode="Markdown")
 
 @bot.callback_query_handler(func=lambda call: True)
 def handle_query(call):
@@ -190,6 +202,11 @@ class DummyHandler(BaseHTTPRequestHandler):
         self.send_header('Content-type', 'text/plain')
         self.end_headers()
         self.wfile.write(b"Bot is alive and running!")
+
+    def do_HEAD(self):
+        self.send_response(200)
+        self.send_header('Content-type', 'text/html')
+        self.end_headers()
         
     def log_message(self, format, *args):
         pass
