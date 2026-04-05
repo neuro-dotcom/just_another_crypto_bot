@@ -17,6 +17,21 @@ TELEGRAM_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 client = genai.Client(api_key=API_KEY)
 bot = telebot.TeleBot(TELEGRAM_TOKEN)
 
+# Send a proactive notification on startup
+MY_ID = os.getenv("TELEGRAM_CHAT_ID")
+if MY_ID:
+    bot.send_message(MY_ID, "🚀 Just Another Crypto AI is officially ONLINE on Hugging Face!")
+
+# --- THE LOCKDOWN STARTS HERE ---
+@bot.message_handler(func=lambda message: str(message.chat.id) != MY_ID_ID)
+def block_strangers(message):
+    """Intercepts every message from anyone who isn't YOU."""
+    unauthorized_msg = "⛔ **Access Denied.** This is a private Wolf-class AI instance."
+    bot.reply_to(message, unauthorized_msg, parse_mode="Markdown")
+    print(f"🛡️ Security Alert: Unauthorized access attempt from {message.chat.id}")
+# --- THE LOCKDOWN ENDS HERE ---
+
+
 # --- 2. Data Gathering Modules ---
 # We add a fake User-Agent so APIs don't block us for acting like a server bot
 HEADERS = {
@@ -141,9 +156,10 @@ class DummyHandler(BaseHTTPRequestHandler):
         pass # Suppress standard HTTP server logs to keep terminal clean
 
 def start_dummy_server():
-    port = int(os.environ.get("PORT", 10000))
+    # Hugging Face and most platforms use the PORT env var
+    port = int(os.environ.get("PORT", 7860)) 
     server = HTTPServer(('0.0.0.0', port), DummyHandler)
-    print(f"🌐 Dummy web server running on port {port}")
+    print(f"🌐 Dummy web server running on port {port}", flush=True)
     server.serve_forever()
 
 # --- 6. Main Execution Flow ---
