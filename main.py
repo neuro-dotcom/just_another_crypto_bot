@@ -18,26 +18,33 @@ client = genai.Client(api_key=API_KEY)
 bot = telebot.TeleBot(TELEGRAM_TOKEN)
 
 # --- 2. Data Gathering Modules ---
+# We add a fake User-Agent so APIs don't block us for acting like a server bot
+HEADERS = {
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+}
+
 def fetch_crypto_prices():
     url = "https://api.coingecko.com/api/v3/simple/price?ids=bitcoin,ethereum&vs_currencies=usd"
     try:
-        response = requests.get(url, timeout=10)
+        response = requests.get(url, headers=HEADERS, timeout=10)
         response.raise_for_status()
         data = response.json()
         return data['bitcoin']['usd'], data['ethereum']['usd']
-    except requests.RequestException:
+    except requests.RequestException as e:
+        print(f"❌ CoinGecko API Error: {e}") # This will show up in your Render logs!
         return None, None
 
 def fetch_fear_and_greed_index():
     url = "https://api.alternative.me/fng/?limit=1"
     try:
-        response = requests.get(url, timeout=10)
+        response = requests.get(url, headers=HEADERS, timeout=10)
         response.raise_for_status()
         data = response.json()
         value = data['data'][0]['value']
         sentiment = data['data'][0]['value_classification']
         return value, sentiment
-    except requests.RequestException:
+    except requests.RequestException as e:
+        print(f"❌ Fear & Greed API Error: {e}")
         return None, None
 
 # --- 3. AI Processing Module ---
