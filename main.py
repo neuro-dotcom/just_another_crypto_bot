@@ -102,13 +102,21 @@ def handle_query(call):
     bot.answer_callback_query(call.id, "Gathering data...")
     bot.send_message(call.message.chat.id, "📡 Fetching market data. Please wait...")
 
+    # Fetch the data
     btc, eth = fetch_crypto_prices()
     fng_val, fng_sent = fetch_fear_and_greed_index()
 
-    if not all([btc, eth, fng_val, fng_sent]):
-        bot.send_message(call.message.chat.id, "⚠️ API Error: Missing data.")
+    # CRITICAL FIX: Only fail if the prices (BTC/ETH) fail. 
+    if not btc or not eth:
+        bot.send_message(call.message.chat.id, "⚠️ API Error: Could not fetch crypto prices from Binance.")
         return
 
+    # Resilient Fix: If Fear & Greed fails, use a fallback instead of crashing
+    if not fng_val or not fng_sent:
+        fng_val = "N/A"
+        fng_sent = "Data Unavailable"
+
+    # Route the request based on the button clicked
     if call.data == "raw_data":
         report = f"💰 **Raw Market Data:**\nBTC: ${btc}\nETH: ${eth}\nFear & Greed: {fng_val}/100 ({fng_sent})"
         bot.send_message(call.message.chat.id, report, parse_mode="Markdown")
