@@ -1,28 +1,44 @@
-# 🐺 Just Another Crypto AI Bot
+---
+title: Just Another Crypto AI
+emoji: 🐺
+colorFrom: gray
+colorTo: blue
+sdk: docker
+pinned: false
+---
+
+# 🐺 Just Another Crypto AI Bot (AI Ops Portfolio Project)
 
 An autonomous, bilingual AI agent that aggregates real-time cryptocurrency market data and generates professional sentiment analysis using **Google Gemini 3 Flash**.
 
 ---
 
 ## 🚀 Overview
-This bot provides a seamless bridge between raw market data and actionable human insights. It targets retail traders by synthesizing price action with market sentiment (Fear & Greed Index) to deliver "no-nonsense" market updates.
+This bot provides a seamless bridge between raw market data and actionable human insights. It targets retail traders by synthesizing price action with market sentiment (Fear & Greed Index) to deliver "no-nonsense" market updates. 
 
 ### ✨ Key Features
 * **Real-time Data Aggregation:** Fetches live BTC/ETH prices via CoinGecko API.
 * **Sentiment Analysis:** Integrates the Crypto Fear & Greed Index to provide market context.
 * **AI-Powered Insights:** Uses **Gemini 3 Flash Preview** to generate sarcastic, professional, and punchy market reports.
 * **Bilingual Support:** Full English (🇬🇧) and Russian (🇷🇺) output.
-* **Interactive UI:** Telegram Inline Keyboards for a smooth user experience.
-* **Cloud Native:** Fully deployed on **Render** with a CI/CD pipeline.
+* **Proactive Automation:** Integrated `APScheduler` for timezone-aware (Europe/Berlin) proactive morning market briefings.
+* **Hardened Security:** Strictly enforced Role-Based Access Control (RBAC) to prevent API credit exhaustion and unauthorized Callback Query bypasses.
 
 ---
 
-## 🛠️ Tech Stack
-* **Language:** Python 3.12+
-* **LLM:** Google Gemini 3 Flash (via `google-genai` SDK)
-* **APIs:** Telegram Bot API, CoinGecko, Alternative.me
-* **Infrastructure:** Git, GitHub, Render (Cloud Hosting)
-* **Architecture:** Modular, functional programming with integrated health-check dummy server for cloud port-binding.
+## 🛠️ Architecture & Ops Integrations
+* **Infrastructure:** Containerized via Docker and fully deployed on **Hugging Face Spaces**.
+* **CI/CD:** Automated zero-touch deployment pipeline via **GitHub Actions**.
+* **Resilience:** Custom heartbeat monitor integration via UptimeRobot to bypass platform sleep cycles.
+* **Architecture:** Modular, functional programming with an integrated health-check dummy server for cloud port-binding.
+
+---
+
+## 🧰 Tech Stack
+* **Language:** Python 3.11+
+* **LLM:** Google Gemini API (via `google-genai` SDK)
+* **APIs:** Telegram Bot API (`pyTelegramBotAPI`), CoinGecko, Alternative.me
+* **DevOps:** Git, GitHub Actions, Docker
 
 ---
 
@@ -50,6 +66,6 @@ This bot provides a seamless bridge between raw market data and actionable human
    python main.py
 
 👨‍💻 Author
-neuro-dotcom AI Operations & Automation Engineer "Building the intersection of AI and Finance."
-
----
+neuro-dotcom 
+AI Operations & Automation Engineer 
+"Building the intersection of AI and Finance."
