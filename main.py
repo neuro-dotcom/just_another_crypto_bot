@@ -153,5 +153,8 @@ if __name__ == "__main__":
     # Start the dummy web server in a parallel thread so it doesn't block the bot
     threading.Thread(target=start_dummy_server, daemon=True).start()
 
+    # ADD THIS LINE: This forces Telegram to sever any weird phantom connections
+    bot.remove_webhook()
+
     print("🤖 Bot is starting... Listening for Telegram messages.")
     bot.infinity_polling()
