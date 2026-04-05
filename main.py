@@ -24,14 +24,23 @@ HEADERS = {
 }
 
 def fetch_crypto_prices():
-    url = "https://api.coingecko.com/api/v3/simple/price?ids=bitcoin,ethereum&vs_currencies=usd"
     try:
-        response = requests.get(url, headers=HEADERS, timeout=10)
-        response.raise_for_status()
-        data = response.json()
-        return data['bitcoin']['usd'], data['ethereum']['usd']
+        # Binance API is much friendlier to cloud servers like Render
+        btc_url = "https://api.binance.com/api/v3/ticker/price?symbol=BTCUSDT"
+        eth_url = "https://api.binance.com/api/v3/ticker/price?symbol=ETHUSDT"
+        
+        btc_response = requests.get(btc_url, timeout=10)
+        btc_response.raise_for_status()
+        # Binance returns a string with many decimals, so we convert to float and round to 2
+        btc_price = round(float(btc_response.json()['price']), 2)
+        
+        eth_response = requests.get(eth_url, timeout=10)
+        eth_response.raise_for_status()
+        eth_price = round(float(eth_response.json()['price']), 2)
+        
+        return btc_price, eth_price
     except requests.RequestException as e:
-        print(f"❌ CoinGecko API Error: {e}") # This will show up in your Render logs!
+        print(f"❌ Binance API Error: {e}")
         return None, None
 
 def fetch_fear_and_greed_index():
