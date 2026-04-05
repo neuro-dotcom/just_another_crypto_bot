@@ -5,7 +5,7 @@ from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton
 from google import genai
 from dotenv import load_dotenv
 
-# NEW: Built-in libraries for our dummy web server
+# Built-in libraries for our dummy web server
 import threading
 from http.server import BaseHTTPRequestHandler, HTTPServer
 
@@ -17,45 +17,50 @@ TELEGRAM_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 client = genai.Client(api_key=API_KEY)
 bot = telebot.TeleBot(TELEGRAM_TOKEN)
 
-# Send a proactive notification on startup
-MY_ID = os.getenv("TELEGRAM_CHAT_ID")
-if MY_ID:
-    bot.send_message(MY_ID, "🚀 Just Another Crypto AI is officially ONLINE on Hugging Face!")
+# CRITICAL SEC FIX: Strip invisible spaces from the Hugging Face secret
+AUTHORIZED_USER_ID = os.getenv("TELEGRAM_CHAT_ID", "").strip()
 
-# --- THE LOCKDOWN STARTS HERE ---
-@bot.message_handler(func=lambda message: str(message.chat.id) != MY_ID_ID)
+# Send a proactive notification on startup
+if AUTHORIZED_USER_ID:
+    bot.send_message(AUTHORIZED_USER_ID, "🚀 Just Another Crypto AI is officially ONLINE on Hugging Face!")
+
+
+# ==========================================
+# --- THE LOCKDOWN (WOLF PATCH 1.0) ---
+# ==========================================
+
+# 1. Block unauthorized TEXT and COMMANDS (like /start)
+@bot.message_handler(func=lambda message: str(message.chat.id) != AUTHORIZED_USER_ID)
 def block_strangers(message):
-    """Intercepts every message from anyone who isn't YOU."""
-    unauthorized_msg = "⛔ **Access Denied.** This is a private Wolf-class AI instance."
-    bot.reply_to(message, unauthorized_msg, parse_mode="Markdown")
-    print(f"🛡️ Security Alert: Unauthorized access attempt from {message.chat.id}")
-# --- THE LOCKDOWN ENDS HERE ---
+    print(f"🛡️ Security: Blocked text from {message.chat.id} (Expected: {AUTHORIZED_USER_ID})", flush=True)
+    bot.reply_to(message, "⛔ Access Denied. This is a private Wolf-class AI instance.")
+
+# 2. Block unauthorized BUTTON CLICKS (Callback Bypass)
+@bot.callback_query_handler(func=lambda call: str(call.message.chat.id) != AUTHORIZED_USER_ID)
+def block_stranger_callbacks(call):
+    print(f"🛡️ Security: Blocked button click from {call.message.chat.id}", flush=True)
+    bot.answer_callback_query(call.id, "⛔ Access Denied. Wolf only.", show_alert=True)
+
+# ==========================================
 
 
 # --- 2. Data Gathering Modules ---
-# We add a fake User-Agent so APIs don't block us for acting like a server bot
 HEADERS = {
     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
 }
 
 def fetch_crypto_prices():
     try:
-        # Switched to CoinGecko: No US geoblocking!
         url = "https://api.coingecko.com/api/v3/simple/price?ids=bitcoin,ethereum&vs_currencies=usd"
-        
-        # We reuse the HEADERS defined above so CoinGecko knows we are a friendly bot
         response = requests.get(url, headers=HEADERS, timeout=10)
         response.raise_for_status()
-        
         data = response.json()
         
-        # CoinGecko returns: {"bitcoin": {"usd": 50000}, "ethereum": {"usd": 3000}}
         btc_price = float(data['bitcoin']['usd'])
         eth_price = float(data['ethereum']['usd'])
-        
         return btc_price, eth_price
     except requests.RequestException as e:
-        print(f"❌ CoinGecko API Error: {e}")
+        print(f"❌ CoinGecko API Error: {e}", flush=True)
         return None, None
 
 def fetch_fear_and_greed_index():
@@ -68,8 +73,9 @@ def fetch_fear_and_greed_index():
         sentiment = data['data'][0]['value_classification']
         return value, sentiment
     except requests.RequestException as e:
-        print(f"❌ Fear & Greed API Error: {e}")
+        print(f"❌ Fear & Greed API Error: {e}", flush=True)
         return None, None
+
 
 # --- 3. AI Processing Module ---
 def generate_ai_analysis(btc, eth, fng_val, fng_sent, mode):
@@ -99,6 +105,7 @@ def generate_ai_analysis(btc, eth, fng_val, fng_sent, mode):
     except Exception as e:
         return f"❌ AI Error: {e}"
 
+
 # --- 4. Telegram Bot Handlers ---
 @bot.message_handler(commands=['start'])
 def send_welcome(message):
@@ -117,24 +124,21 @@ def handle_query(call):
     bot.answer_callback_query(call.id, "Gathering data...")
     bot.send_message(call.message.chat.id, "📡 Fetching market data. Please wait...")
 
-    # Fetch the data
     btc, eth = fetch_crypto_prices()
     fng_val, fng_sent = fetch_fear_and_greed_index()
 
-    # CRITICAL FIX: Only fail if the prices (BTC/ETH) fail. 
     if not btc or not eth:
         bot.send_message(call.message.chat.id, "⚠️ API Error: Could not fetch crypto prices from CoinGecko.")
         return
 
-    # Resilient Fix: If Fear & Greed fails, use a fallback instead of crashing
     if not fng_val or not fng_sent:
         fng_val = "N/A"
         fng_sent = "Data Unavailable"
 
-    # Route the request based on the button clicked
     if call.data == "raw_data":
         report = f"💰 **Raw Market Data:**\nBTC: ${btc}\nETH: ${eth}\nFear & Greed: {fng_val}/100 ({fng_sent})"
-        bot.send_message(call.message.chat.id, report, parse_mode="Markdown")
+        # Removed parse_mode="Markdown" here as well to prevent silent API crashes on bad characters
+        bot.send_message(call.message.chat.id, report)
         
     elif call.data == "ai_english":
         report = generate_ai_analysis(btc, eth, fng_val, fng_sent, mode="english")
@@ -144,7 +148,8 @@ def handle_query(call):
         report = generate_ai_analysis(btc, eth, fng_val, fng_sent, mode="bilingual")
         bot.send_message(call.message.chat.id, report)
 
-# --- 5. Dummy Web Server (The Render Fix) ---
+
+# --- 5. Dummy Web Server ---
 class DummyHandler(BaseHTTPRequestHandler):
     def do_GET(self):
         self.send_response(200)
@@ -153,24 +158,22 @@ class DummyHandler(BaseHTTPRequestHandler):
         self.wfile.write(b"Bot is alive and running!")
         
     def log_message(self, format, *args):
-        pass # Suppress standard HTTP server logs to keep terminal clean
+        pass
 
 def start_dummy_server():
-    # Hugging Face and most platforms use the PORT env var
     port = int(os.environ.get("PORT", 7860)) 
     server = HTTPServer(('0.0.0.0', port), DummyHandler)
     print(f"🌐 Dummy web server running on port {port}", flush=True)
     server.serve_forever()
 
+
 # --- 6. Main Execution Flow ---
 if __name__ == "__main__":
-    print("🚀 Starting background processes...")
+    print("🚀 Starting background processes...", flush=True)
     
-    # Start the dummy web server in a parallel thread so it doesn't block the bot
     threading.Thread(target=start_dummy_server, daemon=True).start()
 
-    # ADD THIS LINE: This forces Telegram to sever any weird phantom connections
     bot.remove_webhook()
 
-    print("🤖 Bot is starting... Listening for Telegram messages.")
+    print("🤖 Bot is starting... Listening for Telegram messages.", flush=True)
     bot.infinity_polling()
