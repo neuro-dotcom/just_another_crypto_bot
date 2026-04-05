@@ -4,6 +4,8 @@ import telebot
 from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton
 from google import genai
 from dotenv import load_dotenv
+from apscheduler.schedulers.background import BackgroundScheduler
+import pytz
 
 # Built-in libraries for our dummy web server
 import threading
@@ -148,6 +150,38 @@ def handle_query(call):
         report = generate_ai_analysis(btc, eth, fng_val, fng_sent, mode="bilingual")
         bot.send_message(call.message.chat.id, report)
 
+# ==========================================
+# --- PROACTIVE AUTOMATION MODULE ---
+# ==========================================
+def send_morning_report():
+    """Automatically fetches data and sends an AI report to the Admin."""
+    if not AUTHORIZED_USER_ID:
+        return
+
+    print("⏰ Executing scheduled morning report...", flush=True)
+    btc, eth = fetch_crypto_prices()
+    fng_val, fng_sent = fetch_fear_and_greed_index()
+
+    if btc and eth:
+        # Generate the morning AI analysis
+        report = generate_ai_analysis(btc, eth, fng_val or "N/A", fng_sent or "N/A", mode="english")
+        header = "🌅 **Wolf's Morning Briefing**\n\n"
+        bot.send_message(AUTHORIZED_USER_ID, header + report)
+    else:
+        bot.send_message(AUTHORIZED_USER_ID, "⚠️ Morning routine failed: API Error fetching prices.")
+
+def start_scheduler():
+    # Force the scheduler into your local European timezone (Europe/Berlin handles Frankfurt time perfectly)
+    tz = pytz.timezone('Europe/Berlin')
+    scheduler = BackgroundScheduler(timezone=tz)
+    
+    # Schedule the report for 08:00 AM every day
+    scheduler.add_job(send_morning_report, 'cron', hour=8, minute=0)
+    
+    scheduler.start()
+    print("⏱️ Proactive scheduler started. Targeted for 08:00 AM local time.", flush=True)
+# ==========================================
+
 
 # --- 5. Dummy Web Server ---
 class DummyHandler(BaseHTTPRequestHandler):
@@ -171,7 +205,11 @@ def start_dummy_server():
 if __name__ == "__main__":
     print("🚀 Starting background processes...", flush=True)
     
+    # Start the dummy web server in a parallel thread
     threading.Thread(target=start_dummy_server, daemon=True).start()
+
+    # Start the autonomous scheduler
+    start_scheduler()
 
     bot.remove_webhook()
 
