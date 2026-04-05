@@ -25,22 +25,22 @@ HEADERS = {
 
 def fetch_crypto_prices():
     try:
-        # Binance API is much friendlier to cloud servers like Render
-        btc_url = "https://api.binance.com/api/v3/ticker/price?symbol=BTCUSDT"
-        eth_url = "https://api.binance.com/api/v3/ticker/price?symbol=ETHUSDT"
+        # Switched to CoinGecko: No US geoblocking!
+        url = "https://api.coingecko.com/api/v3/simple/price?ids=bitcoin,ethereum&vs_currencies=usd"
         
-        btc_response = requests.get(btc_url, timeout=10)
-        btc_response.raise_for_status()
-        # Binance returns a string with many decimals, so we convert to float and round to 2
-        btc_price = round(float(btc_response.json()['price']), 2)
+        # We reuse the HEADERS defined above so CoinGecko knows we are a friendly bot
+        response = requests.get(url, headers=HEADERS, timeout=10)
+        response.raise_for_status()
         
-        eth_response = requests.get(eth_url, timeout=10)
-        eth_response.raise_for_status()
-        eth_price = round(float(eth_response.json()['price']), 2)
+        data = response.json()
+        
+        # CoinGecko returns: {"bitcoin": {"usd": 50000}, "ethereum": {"usd": 3000}}
+        btc_price = float(data['bitcoin']['usd'])
+        eth_price = float(data['ethereum']['usd'])
         
         return btc_price, eth_price
     except requests.RequestException as e:
-        print(f"❌ Binance API Error: {e}")
+        print(f"❌ CoinGecko API Error: {e}")
         return None, None
 
 def fetch_fear_and_greed_index():
@@ -108,7 +108,7 @@ def handle_query(call):
 
     # CRITICAL FIX: Only fail if the prices (BTC/ETH) fail. 
     if not btc or not eth:
-        bot.send_message(call.message.chat.id, "⚠️ API Error: Could not fetch crypto prices from Binance.")
+        bot.send_message(call.message.chat.id, "⚠️ API Error: Could not fetch crypto prices from CoinGecko.")
         return
 
     # Resilient Fix: If Fear & Greed fails, use a fallback instead of crashing
