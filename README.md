@@ -22,15 +22,15 @@ This bot provides a seamless bridge between raw market data and actionable human
 * **AI-Powered Insights:** Uses **Gemini 3 Flash Preview** to generate sarcastic, professional, and punchy market reports.
 * **Bilingual Support:** Full English (🇬🇧) and Russian (🇷🇺) output.
 * **Proactive Automation:** Integrated `APScheduler` for timezone-aware (Europe/Berlin) proactive morning market briefings.
-* **Hardened Security:** Strictly enforced Role-Based Access Control (RBAC) to prevent API credit exhaustion and unauthorized Callback Query bypasses.
+* **Portfolio Showcase Mode:** Features a public "Guest Path" that allows recruiters and engineering leads to verify the bot's live status and infrastructure without consuming private API credits.
 
 ---
 
 ## 🛠️ Architecture & Ops Integrations
 * **Infrastructure:** Containerized via Docker and fully deployed on **Hugging Face Spaces**.
 * **CI/CD:** Automated zero-touch deployment pipeline via **GitHub Actions**.
-* **Resilience:** Custom heartbeat monitor integration via UptimeRobot to bypass platform sleep cycles.
-* **Architecture:** Modular, functional programming with an integrated health-check dummy server for cloud port-binding.
+* **Hardened Security:** Strictly enforced Role-Based Access Control (RBAC) to prevent unauthorized Callback Query bypasses and API exhaustion.
+* **Resilience:** Integrated HTTP health-check server with full `HEAD` request support, paired with UptimeRobot to bypass platform sleep cycles and maintain 100% uptime.
 
 ---
 
