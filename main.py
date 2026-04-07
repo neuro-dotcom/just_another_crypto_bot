@@ -100,7 +100,7 @@ def generate_ai_analysis(btc, eth, fng_val, fng_sent, mode):
     """
     try:
         response = client.models.generate_content(
-            model="gemini-3-flash-preview",
+            model="gemini-2.5-flash",
             contents=prompt
         )
         return response.text
