@@ -6,6 +6,7 @@ from google import genai
 from dotenv import load_dotenv
 from apscheduler.schedulers.background import BackgroundScheduler
 import pytz
+import json
 
 # Built-in libraries for our dummy web server
 import threading
@@ -144,6 +145,15 @@ def handle_query(call):
         )
     except Exception:
         pass # If buttons are already gone, do nothing
+    
+    if call.data.startswith("set_"):
+        new_time = call.data.split("_")[1]
+        save_user_time(new_time)
+        update_schedule(new_time)
+        bot.answer_callback_query(call.id, f"✅ Time set to {new_time}")
+        bot.send_message(call.message.chat.id, f"🚀 **Confirmed!** Your morning report is now scheduled for {new_time} UTC daily.", parse_mode="Markdown")
+        return # Stop here so it doesn't try to fetch crypto news!
+    
     bot.answer_callback_query(call.id, "Gathering data...")
     bot.send_message(call.message.chat.id, "📡 Fetching market data. Please wait...")
 
@@ -191,17 +201,56 @@ def send_morning_report():
     else:
         bot.send_message(AUTHORIZED_USER_ID, "⚠️ Morning routine failed: API Error fetching prices.")
 
-def start_scheduler():
-    # Force the scheduler into your local European timezone (Europe/Berlin handles Frankfurt time perfectly)
-    tz = pytz.timezone('Europe/Berlin')
-    scheduler = BackgroundScheduler(timezone=tz)
-    
-    # Schedule the report for 08:00 AM every day
-    scheduler.add_job(send_morning_report, 'cron', hour=8, minute=0)
-    
-    scheduler.start()
-    print("⏱️ Proactive scheduler started. Targeted for 08:00 AM local time.", flush=True)
-# ==========================================
+# --- 1. PREFERENCE HELPERS ---
+PREFS_FILE = "user_preferences.json"
+
+def get_user_time():
+    """Load the saved time or return default 08:00"""
+    if os.path.exists(PREFS_FILE):
+        with open(PREFS_FILE, 'r') as f:
+            prefs = json.load(f)
+            return prefs.get(AUTHORIZED_USER_ID, {}).get("time", "08:00")
+    return "08:00"
+
+def save_user_time(new_time):
+    prefs = {}
+    if os.path.exists(PREFS_FILE):
+        with open(PREFS_FILE, 'r') as f:
+            prefs = json.load(f)
+    if AUTHORIZED_USER_ID not in prefs:
+        prefs[AUTHORIZED_USER_ID] = {}
+    prefs[AUTHORIZED_USER_ID]["time"] = new_time
+    with open(PREFS_FILE, 'w') as f:
+        json.dump(prefs, f)
+
+# --- 2. THE SET_TIME COMMAND ---
+@bot.message_handler(commands=['set_time'])
+def set_time_command(m):
+    if str(m.chat.id) != AUTHORIZED_USER_ID: return
+    markup = InlineKeyboardMarkup()
+    markup.row(
+        InlineKeyboardButton("🌅 08:00", callback_data="set_08:00"),
+        InlineKeyboardButton("🏙️ 12:00", callback_data="set_12:00")
+    )
+    markup.row(
+        InlineKeyboardButton("🌆 18:00", callback_data="set_18:00"),
+        InlineKeyboardButton("🌃 22:00", callback_data="set_22:00")
+    )
+    bot.reply_to(m, "⏰ **Select your daily briefing time (UTC):**", 
+               reply_markup=markup, parse_mode="Markdown")
+
+# --- 3. DYNAMIC SCHEDULER ---
+# Initialize the scheduler globally
+scheduler = BackgroundScheduler(timezone=pytz.timezone('Europe/Berlin'))
+
+def update_schedule(new_time):
+    h, m = map(int, new_time.split(":"))
+    # id='daily_briefing' allows us to replace the old job with the new one
+    scheduler.add_job(send_morning_report, 'cron', hour=h, minute=m, id='daily_briefing', replace_existing=True)
+    print(f"⏱️ Schedule updated to {new_time}", flush=True)
+
+# Start it once at the beginning of the program
+scheduler.start()
 
 
 # --- 5. Dummy Web Server ---
