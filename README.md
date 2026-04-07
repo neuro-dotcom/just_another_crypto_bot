@@ -5,6 +5,7 @@ colorFrom: gray
 colorTo: blue
 sdk: docker
 pinned: false
+app_port: 7860
 ---
 
 # 🐺 Just Another Crypto AI Bot (AI Ops Portfolio Project)
@@ -19,16 +20,18 @@ This bot provides a seamless bridge between raw market data and actionable human
 ### ✨ Key Features
 * **Real-time Data Aggregation:** Fetches live BTC/ETH prices via CoinGecko API.
 * **Sentiment Analysis:** Integrates the Crypto Fear & Greed Index to provide market context.
-* **AI-Powered Insights:** Uses **Gemini 3 Flash Preview** to generate sarcastic, professional, and punchy market reports.
+* **AI-Powered Insights:** Uses **Gemini 3 Flash** to generate sarcastic, professional, and punchy market reports.
 * **Bilingual Support:** Full English (🇬🇧) and Russian (🇷🇺) output.
-* **Proactive Automation:** Integrated `APScheduler` for timezone-aware (Europe/Berlin) proactive morning market briefings.
-* **Portfolio Showcase Mode:** Features a public "Guest Path" that allows recruiters and engineering leads to verify the bot's live status and infrastructure without consuming private API credits.
+* **Dynamic Scheduling System:** Users can modify their automated daily briefing time via the UI, instantly updating the server's cron jobs via `APScheduler` (timezone-aware to Europe/Berlin) without restarting the container.
+* **Ghost Button Cleanup:** Implements callback query manipulation (`edit_message_reply_markup`) to automatically clear used UI elements, maintaining a clean chat history.
+* **Portfolio Showcase Mode:** Features a public "Guest Path" that allows recruiters to verify the bot's live status without consuming private API credits.
 
 ---
 
 ## 🛠️ Architecture & Ops Integrations
 * **Infrastructure:** Containerized via Docker and fully deployed on **Hugging Face Spaces**.
 * **CI/CD:** Automated zero-touch deployment pipeline via **GitHub Actions**.
+* **State Management:** Persistent JSON local database for tracking user scheduling preferences.
 * **Hardened Security:** Strictly enforced Role-Based Access Control (RBAC) to prevent unauthorized Callback Query bypasses and API exhaustion.
 * **Resilience:** Integrated HTTP health-check server with full `HEAD` request support, paired with UptimeRobot to bypass platform sleep cycles and maintain 100% uptime.
 
@@ -38,7 +41,7 @@ This bot provides a seamless bridge between raw market data and actionable human
 * **Language:** Python 3.11+
 * **LLM:** Google Gemini API (via `google-genai` SDK)
 * **APIs:** Telegram Bot API (`pyTelegramBotAPI`), CoinGecko, Alternative.me
-* **DevOps:** Git, GitHub Actions, Docker
+* **DevOps:** Git, GitHub Actions, Docker, UptimeRobot
 
 ---
 
