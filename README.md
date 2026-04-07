@@ -22,7 +22,7 @@ This bot provides a seamless bridge between raw market data and actionable human
 * **Sentiment Analysis:** Integrates the Crypto Fear & Greed Index to provide market context.
 * **AI-Powered Insights:** Uses **Gemini 3 Flash** to generate sarcastic, professional, and punchy market reports.
 * **Bilingual Support:** Full English (🇬🇧) and Russian (🇷🇺) output.
-* **Dynamic Scheduling System:** Users can modify their automated daily briefing time via the UI, instantly updating the server's cron jobs via `APScheduler` (timezone-aware to Europe/Berlin) without restarting the container.
+* **Globally Dynamic Scheduling:** Users can dynamically modify their automated daily briefing time and local Timezone Offset (UTC±X) directly via the UI. This mathematically updates the server's cron jobs via APScheduler in real-time without container restarts.
 * **Ghost Button Cleanup:** Implements callback query manipulation (`edit_message_reply_markup`) to automatically clear used UI elements, maintaining a clean chat history.
 * **Portfolio Showcase Mode:** Features a public "Guest Path" that allows recruiters to verify the bot's live status without consuming private API credits.
 
@@ -31,7 +31,7 @@ This bot provides a seamless bridge between raw market data and actionable human
 ## 🛠️ Architecture & Ops Integrations
 * **Infrastructure:** Containerized via Docker and fully deployed on **Hugging Face Spaces**.
 * **CI/CD:** Automated zero-touch deployment pipeline via **GitHub Actions**.
-* **State Management:** Persistent JSON local database for tracking user scheduling preferences.
+* **State Management:** Persistent JSON local database for tracking user scheduling and timezone preferences.
 * **Hardened Security:** Strictly enforced Role-Based Access Control (RBAC) to prevent unauthorized Callback Query bypasses and API exhaustion.
 * **Resilience:** Integrated HTTP health-check server with full `HEAD` request support, paired with UptimeRobot to bypass platform sleep cycles and maintain 100% uptime.
 
