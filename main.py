@@ -39,6 +39,14 @@ def block_strangers(message):
 
 # 2. Block unauthorized BUTTON CLICKS (Callback Bypass)
 @bot.callback_query_handler(func=lambda call: str(call.message.chat.id) != AUTHORIZED_USER_ID)
+def callback_query(call):
+    # 🧹 GHOST CLEANUP: Remove the buttons from the message that was just clicked
+    bot.edit_message_reply_markup(
+        chat_id=call.message.chat.id, 
+        message_id=call.message.message_id, 
+        reply_markup=None
+    )
+
 def block_stranger_callbacks(call):
     print(f"🛡️ Security: Blocked button click from {call.message.chat.id}", flush=True)
     bot.answer_callback_query(call.id, "⛔ Access Denied. Wolf only.", show_alert=True)
