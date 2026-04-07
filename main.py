@@ -20,7 +20,9 @@ AUTHORIZED_USER_ID = os.getenv("TELEGRAM_CHAT_ID", "").strip()
 
 client = genai.Client(api_key=API_KEY)
 bot = telebot.TeleBot(TELEGRAM_TOKEN)
-scheduler = BackgroundScheduler(timezone=pytz.timezone('Europe/Berlin'))
+
+# Initialize scheduler without a default timezone (it will be set dynamically)
+scheduler = BackgroundScheduler()
 PREFS_FILE = "user_preferences.json"
 
 if AUTHORIZED_USER_ID:
@@ -32,22 +34,27 @@ if AUTHORIZED_USER_ID:
 # ==========================================
 # 2. STATE MANAGEMENT (JSON DATABASE)
 # ==========================================
-def get_user_time():
-    """Load the saved time or return default 08:00"""
+def get_user_prefs():
+    """Loads preferences or sets defaults: 08:00 at UTC+0"""
     if os.path.exists(PREFS_FILE):
         with open(PREFS_FILE, 'r') as f:
             prefs = json.load(f)
-            return prefs.get(AUTHORIZED_USER_ID, {}).get("time", "08:00")
-    return "08:00"
+            user_data = prefs.get(AUTHORIZED_USER_ID, {})
+            return user_data.get("time", "08:00"), user_data.get("tz_offset", 0)
+    return "08:00", 0
 
-def save_user_time(new_time):
+def save_user_pref(key, value):
+    """Saves a specific preference to the JSON file"""
     prefs = {}
     if os.path.exists(PREFS_FILE):
         with open(PREFS_FILE, 'r') as f:
             prefs = json.load(f)
+            
     if AUTHORIZED_USER_ID not in prefs:
-        prefs[AUTHORIZED_USER_ID] = {}
-    prefs[AUTHORIZED_USER_ID]["time"] = new_time
+        prefs[AUTHORIZED_USER_ID] = {"time": "08:00", "tz_offset": 0}
+        
+    prefs[AUTHORIZED_USER_ID][key] = value
+    
     with open(PREFS_FILE, 'w') as f:
         json.dump(prefs, f)
 
@@ -108,7 +115,6 @@ def generate_ai_analysis(btc, eth, fng_val, fng_sent, mode):
 # 5. PROACTIVE AUTOMATION & SCHEDULING
 # ==========================================
 def send_morning_report():
-    """Automatically fetches data and sends an AI report to the Admin."""
     if not AUTHORIZED_USER_ID: return
     print("⏰ Executing scheduled morning report...", flush=True)
     
@@ -121,53 +127,69 @@ def send_morning_report():
     else:
         bot.send_message(AUTHORIZED_USER_ID, "⚠️ Morning routine failed: API Error fetching prices.")
 
-def update_schedule(new_time):
-    """Updates the cron job to run at the specified user time."""
-    h, m = map(int, new_time.split(":"))
-    scheduler.add_job(send_morning_report, 'cron', hour=h, minute=m, id='daily_briefing', replace_existing=True)
-    print(f"⏱️ Schedule updated to {new_time} UTC", flush=True)
+def update_schedule():
+    """Reads JSON DB and updates cron job with correct Time and Timezone Offset"""
+    saved_time, tz_offset = get_user_prefs()
+    h, m = map(int, saved_time.split(":"))
+    
+    # Convert integer offset to a mathematically perfect timezone object for APScheduler
+    custom_tz = pytz.FixedOffset(tz_offset * 60)
+    
+    scheduler.add_job(
+        send_morning_report, 
+        'cron', 
+        hour=h, 
+        minute=m, 
+        timezone=custom_tz,
+        id='daily_briefing', 
+        replace_existing=True
+    )
+    
+    sign = "+" if tz_offset >= 0 else ""
+    print(f"⏱️ Schedule set to {saved_time} (UTC{sign}{tz_offset})", flush=True)
 
 def init_scheduler():
-    """Starts the scheduler using the user's saved time preference."""
-    saved_time = get_user_time()
-    update_schedule(saved_time)
+    update_schedule()
     scheduler.start()
 
 # ==========================================
-# 6. TELEGRAM HANDLERS (ROUTING & SECURITY)
+# 6. TELEGRAM HANDLERS (UI & ROUTING)
 # ==========================================
 @bot.message_handler(func=lambda msg: str(msg.chat.id) != AUTHORIZED_USER_ID)
 def block_strangers(msg):
-    bot.reply_to(msg, "⛔ Access Denied. This is a private Wolf-class AI instance.")
+    bot.reply_to(msg, "⛔ Access Denied. Private AI instance.")
 
 @bot.callback_query_handler(func=lambda call: str(call.message.chat.id) != AUTHORIZED_USER_ID)
 def block_stranger_callbacks(call):
-    bot.answer_callback_query(call.id, "⛔ Access Denied. Wolf only.", show_alert=True)
+    bot.answer_callback_query(call.id, "⛔ Access Denied.", show_alert=True)
 
 @bot.message_handler(commands=['start'])
 def send_welcome(m):
+    saved_time, tz_offset = get_user_prefs()
+    sign = "+" if tz_offset >= 0 else ""
+    
     markup = InlineKeyboardMarkup()
     markup.row_width = 1
     markup.add(
         InlineKeyboardButton("📊 Dry Numbers Only", callback_data="raw_data"),
         InlineKeyboardButton("🇺🇸 AI Report (English)", callback_data="ai_english"),
         InlineKeyboardButton("🌍 AI Report (Bilingual)", callback_data="ai_bilingual"),
-        InlineKeyboardButton("⏰ Set Briefing Time", callback_data="menu_set_time") # 👈 NEW BUTTON
+        InlineKeyboardButton(f"⏰ Set Time ({saved_time})", callback_data="menu_set_time"),
+        InlineKeyboardButton(f"🌍 Set Timezone (UTC{sign}{tz_offset})", callback_data="menu_set_tz")
     )
-    bot.send_message(m.chat.id, "Welcome to Just Another Crypto AI, boss 🐺\nChoose your report format:", reply_markup=markup)
+    bot.send_message(m.chat.id, "Welcome to Just Another Crypto AI, boss 🐺\nChoose an action:", reply_markup=markup)
 
-@bot.message_handler(commands=['set_time'])
-def set_time_command(m):
+def show_time_menu(chat_id):
     markup = InlineKeyboardMarkup()
-    markup.row(
-        InlineKeyboardButton("🌅 08:00", callback_data="set_08:00"),
-        InlineKeyboardButton("🏙️ 12:00", callback_data="set_12:00")
-    )
-    markup.row(
-        InlineKeyboardButton("🌆 18:00", callback_data="set_18:00"),
-        InlineKeyboardButton("🌃 22:00", callback_data="set_22:00")
-    )
-    bot.reply_to(m, "⏰ **Select your daily briefing time (UTC):**", reply_markup=markup, parse_mode="Markdown")
+    markup.row(InlineKeyboardButton("08:00", callback_data="time_08:00"), InlineKeyboardButton("12:00", callback_data="time_12:00"))
+    markup.row(InlineKeyboardButton("18:00", callback_data="time_18:00"), InlineKeyboardButton("22:00", callback_data="time_22:00"))
+    bot.send_message(chat_id, "⏰ **Select your daily briefing time:**", reply_markup=markup, parse_mode="Markdown")
+
+def show_timezone_menu(chat_id):
+    markup = InlineKeyboardMarkup()
+    markup.row(InlineKeyboardButton("UTC", callback_data="tz_0"), InlineKeyboardButton("UTC +1", callback_data="tz_1"), InlineKeyboardButton("UTC +2", callback_data="tz_2"))
+    markup.row(InlineKeyboardButton("UTC +3", callback_data="tz_3"), InlineKeyboardButton("UTC +4", callback_data="tz_4"), InlineKeyboardButton("UTC +5", callback_data="tz_5"))
+    bot.send_message(chat_id, "🌍 **Select your local timezone offset:**", reply_markup=markup, parse_mode="Markdown")
 
 @bot.callback_query_handler(func=lambda call: True)
 def handle_query(call):
@@ -176,21 +198,32 @@ def handle_query(call):
         bot.edit_message_reply_markup(chat_id=call.message.chat.id, message_id=call.message.message_id, reply_markup=None)
     except Exception: pass
 
-    # 👈 ROUTE THE MAIN MENU BUTTON TO THE TIME MENU
+    # --- UI MENU ROUTING ---
     if call.data == "menu_set_time":
-        set_time_command(call.message)
+        show_time_menu(call.message.chat.id)
         return
-        
-    # ⏱️ TIME SELECTION
-    if call.data.startswith("set_"):
-        new_time = call.data.split("_")[1]
-        save_user_time(new_time)
-        update_schedule(new_time)
-        bot.answer_callback_query(call.id, f"✅ Time set to {new_time}")
-        bot.send_message(call.message.chat.id, f"🚀 **Confirmed!** Morning report scheduled for {new_time} UTC.")
+    if call.data == "menu_set_tz":
+        show_timezone_menu(call.message.chat.id)
         return
 
-    # 📊 MARKET DATA
+    # --- TIMEZONE SELECTION LOGIC ---
+    if call.data.startswith("tz_"):
+        offset = int(call.data.split("_")[1])
+        save_user_pref("tz_offset", offset)
+        update_schedule()
+        sign = "+" if offset >= 0 else ""
+        bot.send_message(call.message.chat.id, f"🌍 **Timezone updated to UTC{sign}{offset}.**\nType /start to see your full schedule.", parse_mode="Markdown")
+        return
+
+    # --- TIME SELECTION LOGIC ---
+    if call.data.startswith("time_"):
+        new_time = call.data.split("_")[1]
+        save_user_pref("time", new_time)
+        update_schedule()
+        bot.send_message(call.message.chat.id, f"⏰ **Time updated to {new_time}.**\nType /start to see your full schedule.", parse_mode="Markdown")
+        return
+
+    # --- MARKET DATA LOGIC ---
     bot.answer_callback_query(call.id, "Gathering data...")
     bot.send_message(call.message.chat.id, "📡 Fetching market data. Please wait...")
 
@@ -219,16 +252,11 @@ class DummyHandler(BaseHTTPRequestHandler):
         self.send_header('Content-type', 'text/plain')
         self.end_headers()
         self.wfile.write(b"Bot is alive and running!")
-    def do_HEAD(self):
-        self.send_response(200)
-        self.send_header('Content-type', 'text/html')
-        self.end_headers()
     def log_message(self, format, *args): pass
 
 def start_dummy_server():
     port = int(os.environ.get("PORT", 7860)) 
     server = HTTPServer(('0.0.0.0', port), DummyHandler)
-    print(f"🌐 Dummy web server running on port {port}", flush=True)
     server.serve_forever()
 
 # ==========================================
@@ -238,9 +266,8 @@ if __name__ == "__main__":
     print("🚀 Starting background processes...", flush=True)
     threading.Thread(target=start_dummy_server, daemon=True).start()
     
-    # Init scheduler correctly using saved state
     init_scheduler()
-    
     bot.remove_webhook()
+    
     print("🤖 Bot is listening...", flush=True)
     bot.infinity_polling()
