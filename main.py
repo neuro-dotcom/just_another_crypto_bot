@@ -151,7 +151,8 @@ def send_welcome(m):
     markup.add(
         InlineKeyboardButton("📊 Dry Numbers Only", callback_data="raw_data"),
         InlineKeyboardButton("🇺🇸 AI Report (English)", callback_data="ai_english"),
-        InlineKeyboardButton("🌍 AI Report (Bilingual)", callback_data="ai_bilingual")
+        InlineKeyboardButton("🌍 AI Report (Bilingual)", callback_data="ai_bilingual"),
+        InlineKeyboardButton("⏰ Set Briefing Time", callback_data="menu_set_time") # 👈 NEW BUTTON
     )
     bot.send_message(m.chat.id, "Welcome to Just Another Crypto AI, boss 🐺\nChoose your report format:", reply_markup=markup)
 
@@ -175,6 +176,11 @@ def handle_query(call):
         bot.edit_message_reply_markup(chat_id=call.message.chat.id, message_id=call.message.message_id, reply_markup=None)
     except Exception: pass
 
+    # 👈 ROUTE THE MAIN MENU BUTTON TO THE TIME MENU
+    if call.data == "menu_set_time":
+        set_time_command(call.message)
+        return
+        
     # ⏱️ TIME SELECTION
     if call.data.startswith("set_"):
         new_time = call.data.split("_")[1]
