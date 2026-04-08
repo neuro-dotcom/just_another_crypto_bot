@@ -11,7 +11,7 @@ from dotenv import load_dotenv
 from apscheduler.schedulers.background import BackgroundScheduler
 
 # ==========================================
-# 1. CONFIGURATION & INITIALIZATION
+# 1. CONFIGURATION
 # ==========================================
 load_dotenv()
 API_KEY = os.getenv("GOOGLE_API_KEY")
@@ -20,22 +20,18 @@ AUTHORIZED_USER_ID = os.getenv("TELEGRAM_CHAT_ID", "").strip()
 
 client = genai.Client(api_key=API_KEY)
 bot = telebot.TeleBot(TELEGRAM_TOKEN)
-
-# Initialize scheduler without a default timezone (it will be set dynamically)
 scheduler = BackgroundScheduler()
 PREFS_FILE = "user_preferences.json"
 
 if AUTHORIZED_USER_ID:
     try:
         bot.send_message(AUTHORIZED_USER_ID, "🚀 Just Another Crypto AI is officially ONLINE!")
-    except Exception as e:
-        print(f"Startup notification failed: {e}")
+    except Exception: pass
 
 # ==========================================
-# 2. STATE MANAGEMENT (JSON DATABASE)
+# 2. STATE MANAGEMENT
 # ==========================================
 def get_user_prefs():
-    """Loads preferences or sets defaults: 08:00 at UTC+0"""
     if os.path.exists(PREFS_FILE):
         with open(PREFS_FILE, 'r') as f:
             prefs = json.load(f)
@@ -44,230 +40,160 @@ def get_user_prefs():
     return "08:00", 0
 
 def save_user_pref(key, value):
-    """Saves a specific preference to the JSON file"""
     prefs = {}
     if os.path.exists(PREFS_FILE):
-        with open(PREFS_FILE, 'r') as f:
-            prefs = json.load(f)
-            
+        with open(PREFS_FILE, 'r') as f: prefs = json.load(f)
     if AUTHORIZED_USER_ID not in prefs:
         prefs[AUTHORIZED_USER_ID] = {"time": "08:00", "tz_offset": 0}
-        
     prefs[AUTHORIZED_USER_ID][key] = value
+    with open(PREFS_FILE, 'w') as f: json.dump(prefs, f)
+
+# ==========================================
+# 3. DATA & AI MODULES
+# ==========================================
+HEADERS = {"User-Agent": "Mozilla/5.0"}
+
+def fetch_data():
+    try:
+        r1 = requests.get("https://api.coingecko.com/api/v3/simple/price?ids=bitcoin,ethereum&vs_currencies=usd", headers=HEADERS, timeout=10)
+        r2 = requests.get("https://api.alternative.me/fng/?limit=1", headers=HEADERS, timeout=10)
+        r1.raise_for_status(); r2.raise_for_status()
+        
+        d1, d2 = r1.json(), r2.json()
+        return (float(d1['bitcoin']['usd']), float(d1['ethereum']['usd']), 
+                d2['data'][0]['value'], d2['data'][0]['value_classification'])
+    except Exception as e:
+        print(f"API Error: {e}")
+        return None, None, None, None
+
+def generate_report(mode):
+    btc, eth, fng_val, fng_sent = fetch_data()
+    if not btc: return "⚠️ API Error: Could not fetch market data."
     
-    with open(PREFS_FILE, 'w') as f:
-        json.dump(prefs, f)
+    if mode == "raw":
+        return f"💰 **Raw Data:**\nBTC: ${btc}\nETH: ${eth}\nF&G: {fng_val}/100 ({fng_sent})"
 
-# ==========================================
-# 3. DATA GATHERING MODULES (APIs)
-# ==========================================
-HEADERS = {
-    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/120.0.0.0 Safari/537.36"
-}
-
-def fetch_crypto_prices():
+    fmt = "Provide response only in 🇬🇧 English." if mode == "english" else "Provide response: 🇬🇧 English first, then 🇷🇺 Russian."
+    prompt = f"Expert crypto update. BTC: ${btc}, ETH: ${eth}, F&G: {fng_val}/100 ({fng_sent}). 3-4 sentences. {fmt}"
+    
     try:
-        url = "https://api.coingecko.com/api/v3/simple/price?ids=bitcoin,ethereum&vs_currencies=usd"
-        response = requests.get(url, headers=HEADERS, timeout=10)
-        response.raise_for_status()
-        data = response.json()
-        return float(data['bitcoin']['usd']), float(data['ethereum']['usd'])
-    except requests.RequestException as e:
-        print(f"❌ CoinGecko API Error: {e}", flush=True)
-        return None, None
-
-def fetch_fear_and_greed_index():
-    try:
-        url = "https://api.alternative.me/fng/?limit=1"
-        response = requests.get(url, headers=HEADERS, timeout=10)
-        response.raise_for_status()
-        data = response.json()
-        return data['data'][0]['value'], data['data'][0]['value_classification']
-    except requests.RequestException as e:
-        print(f"❌ Fear & Greed API Error: {e}", flush=True)
-        return None, None
-
-# ==========================================
-# 4. AI PROCESSING MODULE
-# ==========================================
-def generate_ai_analysis(btc, eth, fng_val, fng_sent, mode):
-    format_instructions = "Provide the response only in 🇬🇧 English."
-    if mode == "bilingual":
-        format_instructions = "Provide the response in two formats: 🇬🇧 English first, then 🇷🇺 Russian."
-
-    prompt = f"""
-    You are an expert, slightly sarcastic crypto analyst. 
-    Current market snapshot:
-    - Bitcoin: ${btc}
-    - Ethereum: ${eth}
-    - Fear & Greed: {fng_val}/100 ({fng_sent})
-
-    Write a short, punchy market update (3-4 sentences) explaining what this means for retail traders.
-    {format_instructions}
-    """
-    try:
-        response = client.models.generate_content(model="gemini-2.5-flash", contents=prompt)
-        return response.text
+        return client.models.generate_content(model="gemini-2.5-flash", contents=prompt).text
     except Exception as e:
         return f"❌ AI Error: {e}"
 
 # ==========================================
-# 5. PROACTIVE AUTOMATION & SCHEDULING
+# 4. SCHEDULER & AUTOMATION
 # ==========================================
+def get_main_menu_markup():
+    """Helper to generate the main menu anywhere"""
+    markup = InlineKeyboardMarkup(row_width=1)
+    markup.add(
+        InlineKeyboardButton("📊 Raw Data", callback_data="run_raw"),
+        InlineKeyboardButton("🇺🇸 AI (English)", callback_data="run_english"),
+        InlineKeyboardButton("🌍 AI (Bilingual)", callback_data="run_bilingual"),
+        InlineKeyboardButton("⚙️ Settings", callback_data="nav_settings")
+    )
+    return markup
+
 def send_morning_report():
     if not AUTHORIZED_USER_ID: return
-    print("⏰ Executing scheduled morning report...", flush=True)
-    
-    btc, eth = fetch_crypto_prices()
-    fng_val, fng_sent = fetch_fear_and_greed_index()
-
-    if btc and eth:
-        report = generate_ai_analysis(btc, eth, fng_val or "N/A", fng_sent or "N/A", mode="english")
-        bot.send_message(AUTHORIZED_USER_ID, f"🌅 **Wolf's Morning Briefing**\n\n{report}")
-    else:
-        bot.send_message(AUTHORIZED_USER_ID, "⚠️ Morning routine failed: API Error fetching prices.")
+    report = generate_report("english")
+    bot.send_message(AUTHORIZED_USER_ID, f"🌅 **Morning Briefing**\n\n{report}", reply_markup=get_main_menu_markup())
 
 def update_schedule():
-    """Reads JSON DB and updates cron job with correct Time and Timezone Offset"""
     saved_time, tz_offset = get_user_prefs()
     h, m = map(int, saved_time.split(":"))
-    
-    # Convert integer offset to a mathematically perfect timezone object for APScheduler
     custom_tz = pytz.FixedOffset(tz_offset * 60)
-    
-    scheduler.add_job(
-        send_morning_report, 
-        'cron', 
-        hour=h, 
-        minute=m, 
-        timezone=custom_tz,
-        id='daily_briefing', 
-        replace_existing=True
-    )
-    
-    sign = "+" if tz_offset >= 0 else ""
-    print(f"⏱️ Schedule set to {saved_time} (UTC{sign}{tz_offset})", flush=True)
-
-def init_scheduler():
-    update_schedule()
-    scheduler.start()
+    scheduler.add_job(send_morning_report, 'cron', hour=h, minute=m, timezone=custom_tz, id='daily', replace_existing=True)
 
 # ==========================================
-# 6. TELEGRAM HANDLERS (UI & ROUTING)
+# 5. UI & TELEGRAM ROUTING
 # ==========================================
 @bot.message_handler(func=lambda msg: str(msg.chat.id) != AUTHORIZED_USER_ID)
-def block_strangers(msg):
-    bot.reply_to(msg, "⛔ Access Denied. Private AI instance.")
-
-@bot.callback_query_handler(func=lambda call: str(call.message.chat.id) != AUTHORIZED_USER_ID)
-def block_stranger_callbacks(call):
-    bot.answer_callback_query(call.id, "⛔ Access Denied.", show_alert=True)
+def block_strangers(msg): bot.reply_to(msg, "⛔ Access Denied.")
 
 @bot.message_handler(commands=['start'])
 def send_welcome(m):
-    saved_time, tz_offset = get_user_prefs()
-    sign = "+" if tz_offset >= 0 else ""
-    
-    markup = InlineKeyboardMarkup()
-    markup.row_width = 1
-    markup.add(
-        InlineKeyboardButton("📊 Dry Numbers Only", callback_data="raw_data"),
-        InlineKeyboardButton("🇺🇸 AI Report (English)", callback_data="ai_english"),
-        InlineKeyboardButton("🌍 AI Report (Bilingual)", callback_data="ai_bilingual"),
-        InlineKeyboardButton(f"⏰ Set Time ({saved_time})", callback_data="menu_set_time"),
-        InlineKeyboardButton(f"🌍 Set Timezone (UTC{sign}{tz_offset})", callback_data="menu_set_tz")
-    )
-    bot.send_message(m.chat.id, "Welcome to Just Another Crypto AI, boss 🐺\nChoose an action:", reply_markup=markup)
-
-def show_time_menu(chat_id):
-    markup = InlineKeyboardMarkup()
-    markup.row(InlineKeyboardButton("08:00", callback_data="time_08:00"), InlineKeyboardButton("12:00", callback_data="time_12:00"))
-    markup.row(InlineKeyboardButton("18:00", callback_data="time_18:00"), InlineKeyboardButton("22:00", callback_data="time_22:00"))
-    bot.send_message(chat_id, "⏰ **Select your daily briefing time:**", reply_markup=markup, parse_mode="Markdown")
-
-def show_timezone_menu(chat_id):
-    markup = InlineKeyboardMarkup()
-    markup.row(InlineKeyboardButton("UTC", callback_data="tz_0"), InlineKeyboardButton("UTC +1", callback_data="tz_1"), InlineKeyboardButton("UTC +2", callback_data="tz_2"))
-    markup.row(InlineKeyboardButton("UTC +3", callback_data="tz_3"), InlineKeyboardButton("UTC +4", callback_data="tz_4"), InlineKeyboardButton("UTC +5", callback_data="tz_5"))
-    bot.send_message(chat_id, "🌍 **Select your local timezone offset:**", reply_markup=markup, parse_mode="Markdown")
+    bot.send_message(m.chat.id, "🐺 **Wolf AI Control Panel**", reply_markup=get_main_menu_markup(), parse_mode="Markdown")
 
 @bot.callback_query_handler(func=lambda call: True)
 def handle_query(call):
-    # 🧹 GHOST CLEANUP
-    try:
-        bot.edit_message_reply_markup(chat_id=call.message.chat.id, message_id=call.message.message_id, reply_markup=None)
-    except Exception: pass
+    chat_id = call.message.chat.id
+    msg_id = call.message.message_id
+    saved_time, tz_offset = get_user_prefs()
 
-    # --- UI MENU ROUTING ---
-    if call.data == "menu_set_time":
-        show_time_menu(call.message.chat.id)
-        return
-    if call.data == "menu_set_tz":
-        show_timezone_menu(call.message.chat.id)
+    # --- NAVIGATION: SETTINGS MENU ---
+    if call.data == "nav_settings":
+        sign = "+" if tz_offset >= 0 else ""
+        markup = InlineKeyboardMarkup(row_width=2)
+        markup.add(
+            InlineKeyboardButton(f"⏰ Time ({saved_time})", callback_data="nav_time"),
+            InlineKeyboardButton(f"🌍 TZ (UTC{sign}{tz_offset})", callback_data="nav_tz"),
+            InlineKeyboardButton("🔙 Back to Main", callback_data="nav_main")
+        )
+        bot.edit_message_text("⚙️ **Settings Menu**", chat_id, msg_id, reply_markup=markup, parse_mode="Markdown")
         return
 
-    # --- TIMEZONE SELECTION LOGIC ---
-    if call.data.startswith("tz_"):
-        offset = int(call.data.split("_")[1])
-        save_user_pref("tz_offset", offset)
+    # --- NAVIGATION: TIME MENU ---
+    if call.data == "nav_time":
+        markup = InlineKeyboardMarkup()
+        markup.row(InlineKeyboardButton("08:00", callback_data="set_time_08:00"), InlineKeyboardButton("12:00", callback_data="set_time_12:00"))
+        markup.row(InlineKeyboardButton("18:00", callback_data="set_time_18:00"), InlineKeyboardButton("22:00", callback_data="set_time_22:00"))
+        markup.add(InlineKeyboardButton("🔙 Back", callback_data="nav_settings"))
+        bot.edit_message_text("⏰ **Select Briefing Time:**", chat_id, msg_id, reply_markup=markup, parse_mode="Markdown")
+        return
+
+    # --- NAVIGATION: TIMEZONE MENU (Negative and Positive) ---
+    if call.data == "nav_tz":
+        markup = InlineKeyboardMarkup()
+        markup.row(InlineKeyboardButton("-8", callback_data="set_tz_-8"), InlineKeyboardButton("-5", callback_data="set_tz_-5"), InlineKeyboardButton("-3", callback_data="set_tz_-3"))
+        markup.row(InlineKeyboardButton("UTC", callback_data="set_tz_0"), InlineKeyboardButton("+3", callback_data="set_tz_3"), InlineKeyboardButton("+5", callback_data="set_tz_5"))
+        markup.add(InlineKeyboardButton("🔙 Back", callback_data="nav_settings"))
+        bot.edit_message_text("🌍 **Select UTC Offset:**", chat_id, msg_id, reply_markup=markup, parse_mode="Markdown")
+        return
+
+    # --- NAVIGATION: BACK TO MAIN ---
+    if call.data == "nav_main":
+        bot.edit_message_text("🐺 **Wolf AI Control Panel**", chat_id, msg_id, reply_markup=get_main_menu_markup(), parse_mode="Markdown")
+        return
+
+    # --- SAVING PREFERENCES ---
+    if call.data.startswith("set_time_"):
+        save_user_pref("time", call.data.split("_")[2])
         update_schedule()
-        sign = "+" if offset >= 0 else ""
-        bot.send_message(call.message.chat.id, f"🌍 **Timezone updated to UTC{sign}{offset}.**\nType /start to see your full schedule.", parse_mode="Markdown")
+        handle_query(telebot.types.CallbackQuery(call.id, call.from_user, call.data, call.chat_instance, call.message, data="nav_settings")) # Force refresh settings
         return
 
-    # --- TIME SELECTION LOGIC ---
-    if call.data.startswith("time_"):
-        new_time = call.data.split("_")[1]
-        save_user_pref("time", new_time)
+    if call.data.startswith("set_tz_"):
+        save_user_pref("tz_offset", int(call.data.split("_")[2]))
         update_schedule()
-        bot.send_message(call.message.chat.id, f"⏰ **Time updated to {new_time}.**\nType /start to see your full schedule.", parse_mode="Markdown")
+        handle_query(telebot.types.CallbackQuery(call.id, call.from_user, call.data, call.chat_instance, call.message, data="nav_settings")) # Force refresh settings
         return
 
-    # --- MARKET DATA LOGIC ---
-    bot.answer_callback_query(call.id, "Gathering data...")
-    bot.send_message(call.message.chat.id, "📡 Fetching market data. Please wait...")
-
-    btc, eth = fetch_crypto_prices()
-    fng_val, fng_sent = fetch_fear_and_greed_index()
-
-    if not btc or not eth:
-        bot.send_message(call.message.chat.id, "⚠️ API Error: Could not fetch prices.")
-        return
-
-    fng_val, fng_sent = fng_val or "N/A", fng_sent or "Data Unavailable"
-
-    if call.data == "raw_data":
-        bot.send_message(call.message.chat.id, f"💰 **Raw Data:**\nBTC: ${btc}\nETH: ${eth}\nF&G: {fng_val}/100 ({fng_sent})")
-    elif call.data == "ai_english":
-        bot.send_message(call.message.chat.id, generate_ai_analysis(btc, eth, fng_val, fng_sent, "english"))
-    elif call.data == "ai_bilingual":
-        bot.send_message(call.message.chat.id, generate_ai_analysis(btc, eth, fng_val, fng_sent, "bilingual"))
+    # --- EXECUTING REPORTS (With Ghost Cleanup) ---
+    if call.data.startswith("run_"):
+        bot.edit_message_reply_markup(chat_id, msg_id, reply_markup=None) # Ghost cleanup
+        bot.send_message(chat_id, "📡 Fetching market data...")
+        
+        mode = call.data.split("_")[1]
+        report = generate_report(mode)
+        
+        # Send report and re-attach the main menu underneath it
+        bot.send_message(chat_id, report, reply_markup=get_main_menu_markup(), parse_mode="Markdown")
 
 # ==========================================
-# 7. CLOUD INFRASTRUCTURE (WEB SERVER)
+# 6. INFRASTRUCTURE & MAIN
 # ==========================================
 class DummyHandler(BaseHTTPRequestHandler):
     def do_GET(self):
-        self.send_response(200)
-        self.send_header('Content-type', 'text/plain')
-        self.end_headers()
-        self.wfile.write(b"Bot is alive and running!")
+        self.send_response(200); self.send_header('Content-type', 'text/plain'); self.end_headers()
+        self.wfile.write(b"Bot is alive!")
     def log_message(self, format, *args): pass
 
-def start_dummy_server():
-    port = int(os.environ.get("PORT", 7860)) 
-    server = HTTPServer(('0.0.0.0', port), DummyHandler)
-    server.serve_forever()
-
-# ==========================================
-# 8. MAIN EXECUTION
-# ==========================================
 if __name__ == "__main__":
-    print("🚀 Starting background processes...", flush=True)
-    threading.Thread(target=start_dummy_server, daemon=True).start()
-    
-    init_scheduler()
+    threading.Thread(target=lambda: HTTPServer(('0.0.0.0', int(os.environ.get("PORT", 7860))), DummyHandler).serve_forever(), daemon=True).start()
+    update_schedule()
+    scheduler.start()
     bot.remove_webhook()
-    
-    print("🤖 Bot is listening...", flush=True)
+    print("🤖 Operations Normal. Listening...", flush=True)
     bot.infinity_polling()
