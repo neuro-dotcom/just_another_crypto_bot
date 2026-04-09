@@ -20,8 +20,9 @@ This bot provides a seamless bridge between raw market data and actionable human
 ### ✨ Key Features
 * **Real-time Data Aggregation:** Fetches live BTC/ETH prices via CoinGecko API.
 * **Sentiment Analysis:** Integrates the Crypto Fear & Greed Index to provide market context.
-* **AI-Powered Insights:** Uses **Gemini 3 Flash** to generate sarcastic, professional, and punchy market reports.
+* **AI-Powered Insights:** Uses **Gemini 2.0 Flash** to generate sarcastic, professional, and punchy market reports.
 * **Bilingual Support:** Full English (🇬🇧) and Russian (🇷🇺) output.
+* **Fault-Tolerant AI Pipeline:** Implements synchronous Exponential Backoff to gracefully handle upstream 503 UNAVAILABLE and 429 RATE LIMIT API bottlenecks, ensuring the bot remains stable during Google server demand spikes.
 * **Globally Dynamic Scheduling:** Users can dynamically modify their automated daily briefing time and local Timezone Offset (UTC±X) directly via the UI. This mathematically updates the server's cron jobs via APScheduler in real-time without container restarts.
 * **Ghost Button Cleanup:** Implements callback query manipulation (`edit_message_reply_markup`) to automatically clear used UI elements, maintaining a clean chat history.
 * **Portfolio Showcase Mode:** Features a public "Guest Path" that allows recruiters to verify the bot's live status without consuming private API credits.
@@ -33,7 +34,7 @@ This bot provides a seamless bridge between raw market data and actionable human
 * **CI/CD:** Automated zero-touch deployment pipeline via **GitHub Actions**.
 * **State Management:** Persistent JSON local database for tracking user scheduling and timezone preferences.
 * **Hardened Security:** Strictly enforced Role-Based Access Control (RBAC) to prevent unauthorized Callback Query bypasses and API exhaustion.
-* **Resilience:** Integrated HTTP health-check server with full `HEAD` request support, paired with UptimeRobot to bypass platform sleep cycles and maintain 100% uptime.
+* **Resilience:** Dual-layer stability featuring an integrated HTTP health-check server (bypassing Hugging Face sleep cycles via UptimeRobot) and algorithmic retry logic (Exponential Backoff) to survive third-party API outages.
 
 ---
 
@@ -50,11 +51,11 @@ This bot provides a seamless bridge between raw market data and actionable human
 1. **Clone the repository:**
    ```bash
    git clone [https://github.com/neuro-dotcom/just_another_crypto_bot.git](https://github.com/neuro-dotcom/just_another_crypto_bot.git)
-   cd just_another_crypto_bot
+   cd just_another_crypto_bot```
 
 2. **Install dependencies:**
    ```bash
-   pip install -r requirements.txt
+   pip install -r requirements.txt```
 
 3. **Configure Environment Variables:**
 
@@ -62,7 +63,7 @@ This bot provides a seamless bridge between raw market data and actionable human
    ```bash
    GOOGLE_API_KEY=your_gemini_key
    TELEGRAM_BOT_TOKEN=your_bot_token
-   TELEGRAM_CHAT_ID=your_chat_id
+   TELEGRAM_CHAT_ID=your_chat_id```
 
 4. **Run the bot:**   
    ```bash
