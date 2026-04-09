@@ -4,6 +4,7 @@ import threading
 import requests
 import pytz
 import telebot
+import time  # <-- Added for synchronous exponential backoff
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton
 from google import genai
@@ -49,7 +50,7 @@ def save_user_pref(key, value):
     with open(PREFS_FILE, 'w') as f: json.dump(prefs, f)
 
 # ==========================================
-# 3. DATA & AI MODULES
+# 3. DATA & AI MODULES (PATCHED WITH BACKOFF)
 # ==========================================
 HEADERS = {"User-Agent": "Mozilla/5.0"}
 
@@ -76,16 +77,33 @@ def generate_report(mode):
     fmt = "Provide response only in 🇬🇧 English." if mode == "english" else "Provide response: 🇬🇧 English first, then 🇷🇺 Russian."
     prompt = f"Expert crypto update. BTC: ${btc}, ETH: ${eth}, F&G: {fng_val}/100 ({fng_sent}). 3-4 sentences. {fmt}"
     
-    try:
-        return client.models.generate_content(model="gemini-2.5-flash", contents=prompt).text
-    except Exception as e:
-        return f"❌ AI Error: {e}"
+    # --- EXPONENTIAL BACKOFF IMPLEMENTATION ---
+    max_retries = 3
+    for attempt in range(max_retries):
+        try:
+            # Corrected model name to 2.0-flash
+            return client.models.generate_content(model="gemini-2.0-flash", contents=prompt).text
+        except Exception as e:
+            error_message = str(e)
+            
+            # Check for overload or rate limits
+            if "503" in error_message or "UNAVAILABLE" in error_message or "429" in error_message:
+                if attempt < max_retries - 1:
+                    wait_time = 2 ** attempt  # Waits 1s, then 2s
+                    print(f"⚠️ Gemini servers busy. Retrying in {wait_time} seconds...")
+                    time.sleep(wait_time)  # Synchronous sleep to match your bot architecture
+                else:
+                    return "🤖 The AI network is currently experiencing extremely high demand. Please try asking again in about 60 seconds!"
+            else:
+                print(f"Critical AI Error: {error_message}")
+                return f"❌ AI Error: {error_message}"
+    
+    return "❌ AI Error: Failed to generate report after retries."
 
 # ==========================================
 # 4. SCHEDULER & AUTOMATION
 # ==========================================
 def get_main_menu_markup():
-    """Helper to generate the main menu anywhere"""
     markup = InlineKeyboardMarkup(row_width=1)
     markup.add(
         InlineKeyboardButton("📊 Raw Data", callback_data="run_raw"),
@@ -122,7 +140,6 @@ def handle_query(call):
     msg_id = call.message.message_id
     saved_time, tz_offset = get_user_prefs()
 
-    # --- NAVIGATION: SETTINGS MENU ---
     if call.data == "nav_settings":
         sign = "+" if tz_offset >= 0 else ""
         markup = InlineKeyboardMarkup(row_width=2)
@@ -134,7 +151,6 @@ def handle_query(call):
         bot.edit_message_text("⚙️ **Settings Menu**", chat_id, msg_id, reply_markup=markup, parse_mode="Markdown")
         return
 
-    # --- NAVIGATION: TIME MENU ---
     if call.data == "nav_time":
         markup = InlineKeyboardMarkup()
         markup.row(InlineKeyboardButton("08:00", callback_data="set_time_08:00"), InlineKeyboardButton("12:00", callback_data="set_time_12:00"))
@@ -143,7 +159,6 @@ def handle_query(call):
         bot.edit_message_text("⏰ **Select Briefing Time:**", chat_id, msg_id, reply_markup=markup, parse_mode="Markdown")
         return
 
-    # --- NAVIGATION: TIMEZONE MENU (Negative and Positive) ---
     if call.data == "nav_tz":
         markup = InlineKeyboardMarkup()
         markup.row(InlineKeyboardButton("-8", callback_data="set_tz_-8"), InlineKeyboardButton("-5", callback_data="set_tz_-5"), InlineKeyboardButton("-3", callback_data="set_tz_-3"))
@@ -152,33 +167,29 @@ def handle_query(call):
         bot.edit_message_text("🌍 **Select UTC Offset:**", chat_id, msg_id, reply_markup=markup, parse_mode="Markdown")
         return
 
-    # --- NAVIGATION: BACK TO MAIN ---
     if call.data == "nav_main":
         bot.edit_message_text("🐺 **Wolf AI Control Panel**", chat_id, msg_id, reply_markup=get_main_menu_markup(), parse_mode="Markdown")
         return
 
-    # --- SAVING PREFERENCES ---
     if call.data.startswith("set_time_"):
         save_user_pref("time", call.data.split("_")[2])
         update_schedule()
-        handle_query(telebot.types.CallbackQuery(call.id, call.from_user, call.data, call.chat_instance, call.message, data="nav_settings")) # Force refresh settings
+        handle_query(telebot.types.CallbackQuery(call.id, call.from_user, call.data, call.chat_instance, call.message, data="nav_settings"))
         return
 
     if call.data.startswith("set_tz_"):
         save_user_pref("tz_offset", int(call.data.split("_")[2]))
         update_schedule()
-        handle_query(telebot.types.CallbackQuery(call.id, call.from_user, call.data, call.chat_instance, call.message, data="nav_settings")) # Force refresh settings
+        handle_query(telebot.types.CallbackQuery(call.id, call.from_user, call.data, call.chat_instance, call.message, data="nav_settings"))
         return
 
-    # --- EXECUTING REPORTS (With Ghost Cleanup) ---
     if call.data.startswith("run_"):
-        bot.edit_message_reply_markup(chat_id, msg_id, reply_markup=None) # Ghost cleanup
+        bot.edit_message_reply_markup(chat_id, msg_id, reply_markup=None) 
         bot.send_message(chat_id, "📡 Fetching market data...")
         
         mode = call.data.split("_")[1]
         report = generate_report(mode)
         
-        # Send report and re-attach the main menu underneath it
         bot.send_message(chat_id, report, reply_markup=get_main_menu_markup(), parse_mode="Markdown")
 
 # ==========================================
