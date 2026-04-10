@@ -8,6 +8,7 @@ import time  # <-- Using for the extended backoff buffer
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton
 from google import genai
+from groq import Groq
 from dotenv import load_dotenv
 from apscheduler.schedulers.background import BackgroundScheduler
 
@@ -18,6 +19,8 @@ load_dotenv()
 API_KEY = os.getenv("GOOGLE_API_KEY")
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 AUTHORIZED_USER_ID = os.getenv("TELEGRAM_CHAT_ID", "").strip()
+GROQ_API_KEY = os.getenv("GROQ_API_KEY")
+groq_client = Groq(api_key=GROQ_API_KEY) if GROQ_API_KEY else None
 
 client = genai.Client(api_key=API_KEY)
 bot = telebot.TeleBot(TELEGRAM_TOKEN)
@@ -77,28 +80,39 @@ def generate_report(mode):
     fmt = "Provide response only in 🇬🇧 English." if mode == "english" else "Provide response: 🇬🇧 English first, then 🇷🇺 Russian."
     prompt = f"Expert crypto update. BTC: ${btc}, ETH: ${eth}, F&G: {fng_val}/100 ({fng_sent}). 3-4 sentences. {fmt}"
     
-    # --- EXTENDED EXPONENTIAL BACKOFF IMPLEMENTATION ---
+    # 1. Primary Engine: Google Gemini
     max_retries = 3
     for attempt in range(max_retries):
         try:
             return client.models.generate_content(model="gemini-2.0-flash", contents=prompt).text
         except Exception as e:
             error_message = str(e)
-            
-            # Check for overload, rate limits, or quota errors
             if "503" in error_message or "UNAVAILABLE" in error_message or "429" in error_message or "Quota" in error_message:
                 if attempt < max_retries - 1:
-                    # Increased wait time to 10s, then 20s to actually clear Google's hard reset window
-                    wait_time = 10 * (attempt + 1) 
-                    print(f"⚠️ Gemini servers busy. Retrying in {wait_time} seconds...")
-                    time.sleep(wait_time) 
+                    wait_time = 5 * (attempt + 1)
+                    print(f"⚠️ Gemini busy. Retrying in {wait_time}s...")
+                    time.sleep(wait_time)
                 else:
-                    return "🤖 The AI network is currently experiencing extremely high demand. Please try asking again in about 60 seconds!"
+                    print("❌ Gemini failed completely. Initiating Groq Failover...")
+                    break # Break the loop to trigger failover
             else:
                 print(f"Critical AI Error: {error_message}")
-                return f"❌ AI Error: {error_message}"
+                break # Break the loop to trigger failover
+
+    # 2. Fallback Engine: Groq (Llama 3 8B)
+    if groq_client:
+        try:
+            print("🚀 Routing request to Groq...")
+            chat_completion = groq_client.chat.completions.create(
+                messages=[{"role": "user", "content": prompt}],
+                model="llama3-8b-8192",
+            )
+            return chat_completion.choices[0].message.content
+        except Exception as groq_e:
+            print(f"❌ Groq Failover Error: {groq_e}")
+            return "🤖 Both primary and backup AI networks are currently unavailable."
     
-    return "❌ AI Error: Failed to generate report after retries."
+    return "🤖 AI network offline. Please try again later."
 
 # ==========================================
 # 4. SCHEDULER & AUTOMATION
