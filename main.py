@@ -106,29 +106,16 @@ def generate_report(mode):
     fmt = "Provide response only in 🇬🇧 English." if mode == "english" else "Provide response: 🇬🇧 English first, then 🇷🇺 Russian."
     prompt = f"Expert crypto update. BTC: ${btc}, ETH: ${eth}, F&G: {fng_val}/100 ({fng_sent}). 3-4 sentences. {fmt}"
     
-    # 1. Primary Engine: Google Gemini
-    max_retries = 3
-    for attempt in range(max_retries):
-        try:
-            return client.models.generate_content(model="gemini-2.0-flash", contents=prompt).text
-        except Exception as e:
-            error_message = str(e)
-            if "503" in error_message or "UNAVAILABLE" in error_message or "429" in error_message or "Quota" in error_message:
-                if attempt < max_retries - 1:
-                    wait_time = 5 * (attempt + 1)
-                    print(f"⚠️ Gemini busy. Retrying in {wait_time}s...")
-                    time.sleep(wait_time)
-                else:
-                    print("❌ Gemini failed completely. Initiating Groq Failover...")
-                    break 
-            else:
-                print(f"Critical AI Error: {error_message}")
-                break 
+    # 1. Primary Engine: Google Gemini (Circuit Breaker Pattern)
+    try:
+        return client.models.generate_content(model="gemini-2.0-flash", contents=prompt).text
+    except Exception as e:
+        # If Gemini fails for ANY reason, we DO NOT wait. We instantly fall through to Groq.
+        print(f"⚠️ Gemini error ({str(e)[:40]}...). Fast-failing to Groq!")
 
     # 2. Fallback Engine: Groq (Llama 4 Scout)
     if groq_client:
         try:
-            print("🚀 Routing request to Groq...")
             chat_completion = groq_client.chat.completions.create(
                 messages=[{"role": "user", "content": prompt}],
                 model="meta-llama/llama-4-scout-17b-16e-instruct",
