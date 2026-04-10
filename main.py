@@ -127,13 +127,13 @@ def generate_report(mode):
                 print(f"Critical AI Error: {error_message}")
                 break # Break the loop to trigger failover
 
-    # 2. Fallback Engine: Groq (Llama 3 8B)
+    # 2. Fallback Engine: Groq (Llama 4 scout 17b 16e instruct)
     if groq_client:
         try:
             print("🚀 Routing request to Groq...")
             chat_completion = groq_client.chat.completions.create(
                 messages=[{"role": "user", "content": prompt}],
-                model="llama3-8b-8192",
+                model="meta-llama/llama-4-scout-17b-16e-instruct",
             )
             return chat_completion.choices[0].message.content
         except Exception as groq_e:
