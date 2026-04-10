@@ -4,3 +4,4 @@ google-genai
 python-dotenv
 APScheduler==3.10.4
 pytz==2024.1
+groq
