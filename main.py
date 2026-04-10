@@ -57,17 +57,45 @@ def save_user_pref(key, value):
 # ==========================================
 HEADERS = {"User-Agent": "Mozilla/5.0"}
 
+# --- MEMORY CACHE SETUP ---
+last_fetch_time = 0
+cached_market_data = (None, None, None, None)
+CACHE_TTL = 300  # 300 seconds = 5 minutes
+
 def fetch_data():
+    global last_fetch_time, cached_market_data
+    
+    # 1. Check if the cache is still fresh (under 5 minutes old)
+    if time.time() - last_fetch_time < CACHE_TTL and cached_market_data[0] is not None:
+        return cached_market_data
+
+    # 2. If cache is expired, fetch new data from the APIs
     try:
         r1 = requests.get("https://api.coingecko.com/api/v3/simple/price?ids=bitcoin,ethereum&vs_currencies=usd", headers=HEADERS, timeout=10)
         r2 = requests.get("https://api.alternative.me/fng/?limit=1", headers=HEADERS, timeout=10)
-        r1.raise_for_status(); r2.raise_for_status()
+        r1.raise_for_status() 
+        r2.raise_for_status()
         
         d1, d2 = r1.json(), r2.json()
-        return (float(d1['bitcoin']['usd']), float(d1['ethereum']['usd']), 
-                d2['data'][0]['value'], d2['data'][0]['value_classification'])
+        
+        # 3. Save the new data to the cache
+        cached_market_data = (
+            float(d1['bitcoin']['usd']), 
+            float(d1['ethereum']['usd']), 
+            d2['data'][0]['value'], 
+            d2['data'][0]['value_classification']
+        )
+        last_fetch_time = time.time() # Reset the timer
+        
+        return cached_market_data
+
     except Exception as e:
         print(f"API Error: {e}")
+        # 4. Fail-Safe: If CoinGecko is down, return the old cached data anyway so the bot doesn't crash
+        if cached_market_data[0] is not None:
+            print("⚠️ Returning stale cache due to CoinGecko API error.")
+            return cached_market_data
+            
         return None, None, None, None
 
 def generate_report(mode):
