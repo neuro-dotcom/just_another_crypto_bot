@@ -10,7 +10,7 @@ app_port: 7860
 
 # 🐺 Just Another Crypto AI Bot (AI Ops Portfolio Project)
 
-An autonomous, bilingual AI agent that aggregates real-time cryptocurrency market data and generates professional sentiment analysis using **Google Gemini 3 Flash**.
+An autonomous, bilingual AI agent that aggregates real-time cryptocurrency market data and generates professional sentiment analysis using a **Multi-Vendor AI Pipeline (Google Gemini & Groq Llama 4)**.
 
 ---
 
@@ -20,7 +20,8 @@ This bot provides a seamless bridge between raw market data and actionable human
 ### ✨ Key Features
 * **Real-time Data Aggregation:** Fetches live BTC/ETH prices via CoinGecko API.
 * **Sentiment Analysis:** Integrates the Crypto Fear & Greed Index to provide market context.
-* **AI-Powered Insights:** Uses **Gemini 2.0 Flash** to generate sarcastic, professional, and punchy market reports.
+* **AI-Powered Insights:** Uses **Gemini 2.0 Flash** as the primary engine, generating sarcastic, professional, and punchy market reports.
+* **Enterprise API Resilience:** Implements a **5-Minute Memory Cache** for CoinGecko to eliminate 429 Rate Limits, alongside a **Zero-Latency Circuit Breaker** that instantly fails-over to **Groq (Llama 4 Scout)** if Google servers go offline.
 * **Bilingual Support:** Full English (🇬🇧) and Russian (🇷🇺) output.
 * **Fault-Tolerant AI Pipeline:** Implements synchronous Exponential Backoff to gracefully handle upstream 503 UNAVAILABLE and 429 RATE LIMIT API bottlenecks, ensuring the bot remains stable during Google server demand spikes.
 * **Globally Dynamic Scheduling:** Users can dynamically modify their automated daily briefing time and local Timezone Offset (UTC±X) directly via the UI. This mathematically updates the server's cron jobs via APScheduler in real-time without container restarts.
@@ -34,13 +35,13 @@ This bot provides a seamless bridge between raw market data and actionable human
 * **CI/CD:** Automated zero-touch deployment pipeline via **GitHub Actions**.
 * **State Management:** Persistent JSON local database for tracking user scheduling and timezone preferences.
 * **Hardened Security:** Strictly enforced Role-Based Access Control (RBAC) to prevent unauthorized Callback Query bypasses and API exhaustion.
-* **Resilience:** Dual-layer stability featuring an integrated HTTP health-check server (bypassing Hugging Face sleep cycles via UptimeRobot) and algorithmic retry logic (Exponential Backoff) to survive third-party API outages.
+* **Resilience:** Dual-layer stability featuring an integrated HTTP health-check server (via UptimeRobot), in-memory data caching, and a multi-vendor API failover router.
 
 ---
 
 ## 🧰 Tech Stack
 * **Language:** Python 3.11+
-* **LLM:** Google Gemini API (via `google-genai` SDK)
+* **LLM:** Google Gemini API (google-genai) & Groq API (Llama 4 Scout)
 * **APIs:** Telegram Bot API (`pyTelegramBotAPI`), CoinGecko, Alternative.me
 * **DevOps:** Git, GitHub Actions, Docker, UptimeRobot
 
@@ -62,6 +63,7 @@ This bot provides a seamless bridge between raw market data and actionable human
    Create a .env file in the root directory:
    ```bash
    GOOGLE_API_KEY=your_gemini_key
+   GROQ_API_KEY=your_groq_key
    TELEGRAM_BOT_TOKEN=your_bot_token
    TELEGRAM_CHAT_ID=your_chat_id
 
