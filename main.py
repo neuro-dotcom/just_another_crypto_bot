@@ -4,7 +4,7 @@ import threading
 import requests
 import pytz
 import telebot
-import time  # <-- Using for the extended backoff buffer
+import time
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton
 from google import genai
@@ -20,8 +20,8 @@ API_KEY = os.getenv("GOOGLE_API_KEY")
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 AUTHORIZED_USER_ID = os.getenv("TELEGRAM_CHAT_ID", "").strip()
 GROQ_API_KEY = os.getenv("GROQ_API_KEY")
-groq_client = Groq(api_key=GROQ_API_KEY) if GROQ_API_KEY else None
 
+groq_client = Groq(api_key=GROQ_API_KEY) if GROQ_API_KEY else None
 client = genai.Client(api_key=API_KEY)
 bot = telebot.TeleBot(TELEGRAM_TOKEN)
 scheduler = BackgroundScheduler()
@@ -53,7 +53,7 @@ def save_user_pref(key, value):
     with open(PREFS_FILE, 'w') as f: json.dump(prefs, f)
 
 # ==========================================
-# 3. DATA & AI MODULES (PATCHED EXTENDED BACKOFF)
+# 3. DATA & AI MODULES
 # ==========================================
 HEADERS = {"User-Agent": "Mozilla/5.0"}
 
@@ -65,11 +65,11 @@ CACHE_TTL = 300  # 300 seconds = 5 minutes
 def fetch_data():
     global last_fetch_time, cached_market_data
     
-    # 1. Check if the cache is still fresh (under 5 minutes old)
+    # 1. Check if the cache is still fresh
     if time.time() - last_fetch_time < CACHE_TTL and cached_market_data[0] is not None:
         return cached_market_data
 
-    # 2. If cache is expired, fetch new data from the APIs
+    # 2. Fetch new data
     try:
         r1 = requests.get("https://api.coingecko.com/api/v3/simple/price?ids=bitcoin,ethereum&vs_currencies=usd", headers=HEADERS, timeout=10)
         r2 = requests.get("https://api.alternative.me/fng/?limit=1", headers=HEADERS, timeout=10)
@@ -78,24 +78,22 @@ def fetch_data():
         
         d1, d2 = r1.json(), r2.json()
         
-        # 3. Save the new data to the cache
+        # 3. Save to cache
         cached_market_data = (
             float(d1['bitcoin']['usd']), 
             float(d1['ethereum']['usd']), 
             d2['data'][0]['value'], 
             d2['data'][0]['value_classification']
         )
-        last_fetch_time = time.time() # Reset the timer
-        
+        last_fetch_time = time.time()
         return cached_market_data
 
     except Exception as e:
         print(f"API Error: {e}")
-        # 4. Fail-Safe: If CoinGecko is down, return the old cached data anyway so the bot doesn't crash
+        # Fail-Safe: Return stale cache if CoinGecko fails
         if cached_market_data[0] is not None:
             print("⚠️ Returning stale cache due to CoinGecko API error.")
             return cached_market_data
-            
         return None, None, None, None
 
 def generate_report(mode):
@@ -122,12 +120,12 @@ def generate_report(mode):
                     time.sleep(wait_time)
                 else:
                     print("❌ Gemini failed completely. Initiating Groq Failover...")
-                    break # Break the loop to trigger failover
+                    break 
             else:
                 print(f"Critical AI Error: {error_message}")
-                break # Break the loop to trigger failover
+                break 
 
-    # 2. Fallback Engine: Groq (Llama 4 scout 17b 16e instruct)
+    # 2. Fallback Engine: Groq (Llama 4 Scout)
     if groq_client:
         try:
             print("🚀 Routing request to Groq...")
@@ -176,7 +174,6 @@ def block_strangers(msg): bot.reply_to(msg, "⛔ Access Denied.")
 def send_welcome(m):
     bot.send_message(m.chat.id, "🐺 **Wolf AI Control Panel**", reply_markup=get_main_menu_markup(), parse_mode="Markdown")
 
-# --- NEW: MANUAL TEST COMMAND ---
 @bot.message_handler(commands=['test_briefing'])
 def test_briefing_cmd(m):
     bot.send_message(m.chat.id, "🛠️ Forcing Morning Briefing execution for testing...")
