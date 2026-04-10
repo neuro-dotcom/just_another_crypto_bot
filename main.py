@@ -4,7 +4,7 @@ import threading
 import requests
 import pytz
 import telebot
-import time  # <-- Added for synchronous exponential backoff
+import time  # <-- Using for the extended backoff buffer
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton
 from google import genai
@@ -50,7 +50,7 @@ def save_user_pref(key, value):
     with open(PREFS_FILE, 'w') as f: json.dump(prefs, f)
 
 # ==========================================
-# 3. DATA & AI MODULES (PATCHED WITH BACKOFF)
+# 3. DATA & AI MODULES (PATCHED EXTENDED BACKOFF)
 # ==========================================
 HEADERS = {"User-Agent": "Mozilla/5.0"}
 
@@ -77,21 +77,21 @@ def generate_report(mode):
     fmt = "Provide response only in 🇬🇧 English." if mode == "english" else "Provide response: 🇬🇧 English first, then 🇷🇺 Russian."
     prompt = f"Expert crypto update. BTC: ${btc}, ETH: ${eth}, F&G: {fng_val}/100 ({fng_sent}). 3-4 sentences. {fmt}"
     
-    # --- EXPONENTIAL BACKOFF IMPLEMENTATION ---
+    # --- EXTENDED EXPONENTIAL BACKOFF IMPLEMENTATION ---
     max_retries = 3
     for attempt in range(max_retries):
         try:
-            # Corrected model name to 2.0-flash
             return client.models.generate_content(model="gemini-2.0-flash", contents=prompt).text
         except Exception as e:
             error_message = str(e)
             
-            # Check for overload or rate limits
-            if "503" in error_message or "UNAVAILABLE" in error_message or "429" in error_message:
+            # Check for overload, rate limits, or quota errors
+            if "503" in error_message or "UNAVAILABLE" in error_message or "429" in error_message or "Quota" in error_message:
                 if attempt < max_retries - 1:
-                    wait_time = 2 ** attempt  # Waits 1s, then 2s
+                    # Increased wait time to 10s, then 20s to actually clear Google's hard reset window
+                    wait_time = 10 * (attempt + 1) 
                     print(f"⚠️ Gemini servers busy. Retrying in {wait_time} seconds...")
-                    time.sleep(wait_time)  # Synchronous sleep to match your bot architecture
+                    time.sleep(wait_time) 
                 else:
                     return "🤖 The AI network is currently experiencing extremely high demand. Please try asking again in about 60 seconds!"
             else:
@@ -133,6 +133,12 @@ def block_strangers(msg): bot.reply_to(msg, "⛔ Access Denied.")
 @bot.message_handler(commands=['start'])
 def send_welcome(m):
     bot.send_message(m.chat.id, "🐺 **Wolf AI Control Panel**", reply_markup=get_main_menu_markup(), parse_mode="Markdown")
+
+# --- NEW: MANUAL TEST COMMAND ---
+@bot.message_handler(commands=['test_briefing'])
+def test_briefing_cmd(m):
+    bot.send_message(m.chat.id, "🛠️ Forcing Morning Briefing execution for testing...")
+    send_morning_report()
 
 @bot.callback_query_handler(func=lambda call: True)
 def handle_query(call):
